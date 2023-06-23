@@ -11,10 +11,62 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/bogem/id3v2/v2"
 )
 
 type Response struct {
 	Id string `json:"id"`
+}
+
+type Song struct {
+	ID                 string `json:"id"`
+	Type               string `json:"type"`
+	Song               string `json:"song"`
+	Album              string `json:"album"`
+	Year               string `json:"year"`
+	Music              string `json:"music"`
+	MusicID            string `json:"music_id"`
+	PrimaryArtists     string `json:"primary_artists"`
+	PrimaryArtistsID   string `json:"primary_artists_id"`
+	FeaturedArtists    string `json:"featured_artists"`
+	FeaturedArtistsID  string `json:"featured_artists_id"`
+	Singers            string `json:"singers"`
+	Starring           string `json:"starring"`
+	Image              string `json:"image"`
+	Label              string `json:"label"`
+	AlbumID            string `json:"albumid"`
+	Language           string `json:"language"`
+	Origin             string `json:"origin"`
+	PlayCount          string `json:"play_count"`
+	CopyrightText      string `json:"copyright_text"`
+	Kbps               string `json:"320kbps"`
+	IsDolbyContent     bool   `json:"is_dolby_content"`
+	ExplicitContent    int    `json:"explicit_content"`
+	HasLyrics          string `json:"has_lyrics"`
+	LyricsSnippet      string `json:"lyrics_snippet"`
+	EncryptedMediaURL  string `json:"encrypted_media_url"`
+	EncryptedMediaPath string `json:"encrypted_media_path"`
+	MediaPreviewURL    string `json:"media_preview_url"`
+	PermaURL           string `json:"perma_url"`
+	AlbumURL           string `json:"album_url"`
+	Duration           string `json:"duration"`
+	Rights             struct {
+		Code               int    `json:"code"`
+		Reason             string `json:"reason"`
+		Cacheable          bool   `json:"cacheable"`
+		DeleteCachedObject bool   `json:"delete_cached_object"`
+	} `json:"rights"`
+	WebP             bool              `json:"webp"`
+	Disabled         string            `json:"disabled"`
+	DisabledText     string            `json:"disabled_text"`
+	Starred          string            `json:"starred"`
+	ArtistMap        map[string]string `json:"artistMap"`
+	ReleaseDate      string            `json:"release_date"`
+	VCode            string            `json:"vcode"`
+	VLink            string            `json:"vlink"`
+	TrillerAvailable bool              `json:"triller_available"`
+	LabelURL         string            `json:"label_url"`
 }
 
 type AlbumResponse struct {
@@ -27,55 +79,7 @@ type AlbumResponse struct {
 	AlbumID          string `json:"albumid"`
 	PermaURL         string `json:"perma_url"`
 	Image            string `json:"image"`
-	Songs            []struct {
-		ID                 string `json:"id"`
-		Type               string `json:"type"`
-		Song               string `json:"song"`
-		Album              string `json:"album"`
-		Year               string `json:"year"`
-		Music              string `json:"music"`
-		MusicID            string `json:"music_id"`
-		PrimaryArtists     string `json:"primary_artists"`
-		PrimaryArtistsID   string `json:"primary_artists_id"`
-		FeaturedArtists    string `json:"featured_artists"`
-		FeaturedArtistsID  string `json:"featured_artists_id"`
-		Singers            string `json:"singers"`
-		Starring           string `json:"starring"`
-		Image              string `json:"image"`
-		Label              string `json:"label"`
-		AlbumID            string `json:"albumid"`
-		Language           string `json:"language"`
-		Origin             string `json:"origin"`
-		PlayCount          string `json:"play_count"`
-		CopyrightText      string `json:"copyright_text"`
-		Kbps               string `json:"320kbps"`
-		IsDolbyContent     bool   `json:"is_dolby_content"`
-		ExplicitContent    int    `json:"explicit_content"`
-		HasLyrics          string `json:"has_lyrics"`
-		LyricsSnippet      string `json:"lyrics_snippet"`
-		EncryptedMediaURL  string `json:"encrypted_media_url"`
-		EncryptedMediaPath string `json:"encrypted_media_path"`
-		MediaPreviewURL    string `json:"media_preview_url"`
-		PermaURL           string `json:"perma_url"`
-		AlbumURL           string `json:"album_url"`
-		Duration           string `json:"duration"`
-		Rights             struct {
-			Code               int    `json:"code"`
-			Reason             string `json:"reason"`
-			Cacheable          bool   `json:"cacheable"`
-			DeleteCachedObject bool   `json:"delete_cached_object"`
-		} `json:"rights"`
-		WebP             bool              `json:"webp"`
-		Disabled         string            `json:"disabled"`
-		DisabledText     string            `json:"disabled_text"`
-		Starred          string            `json:"starred"`
-		ArtistMap        map[string]string `json:"artistMap"`
-		ReleaseDate      string            `json:"release_date"`
-		VCode            string            `json:"vcode"`
-		VLink            string            `json:"vlink"`
-		TrillerAvailable bool              `json:"triller_available"`
-		LabelURL         string            `json:"label_url"`
-	} `json:"songs"`
+	Songs            []Song `json:"songs"`
 }
 
 var httpClient = &http.Client{} // Create a new HTTP client
@@ -167,7 +171,7 @@ func getAlbum(albumID string) (AlbumResponse, error) {
 	return data, nil
 }
 
-func downloadSong(songURL string, songName string) error {
+func downloadSong(songURL string, songName string, songData Song) error {
 	// Send an HTTP GET request
 	resp, err := http.Get(songURL)
 	if err != nil {
@@ -176,15 +180,60 @@ func downloadSong(songURL string, songName string) error {
 	defer resp.Body.Close()
 
 	// Create a file to write to
-	outFile, err := os.Create(songName + ".mp3")
+	filename := songName + ".mp3"
+	outFile, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
 
 	// Write the response body to file
 	_, err = io.Copy(outFile, resp.Body)
-	return err
+	if err != nil {
+		return err
+	}
+	outFile.Close()
+
+	// Open the file with id3v2
+	tag, err := id3v2.Open(filename, id3v2.Options{Parse: true})
+	if err != nil {
+		return err
+	}
+	defer tag.Close()
+
+	// Set the tags
+	tag.SetArtist(songData.PrimaryArtists)
+	tag.SetTitle(songData.Song)
+	tag.SetAlbum(songData.Album)
+	tag.SetYear(songData.Year)
+
+	// Set copyright text
+	tag.AddTextFrame("TCOP", id3v2.EncodingUTF8, songData.CopyrightText)
+
+	// Download and add album art
+	resp, err = http.Get(songData.Image)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Create a byte slice to hold the image data
+	imageData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Add the album art to the tag
+	pic := id3v2.PictureFrame{
+		Encoding:    id3v2.EncodingUTF8,
+		MimeType:    "image/jpeg", // Change this if the image is not a JPEG
+		PictureType: id3v2.PTFrontCover,
+		Description: "Front cover",
+		Picture:     imageData,
+	}
+	tag.AddAttachedPicture(pic)
+
+	// Save the changes
+	return tag.Save()
 }
 
 func main() {
@@ -218,7 +267,7 @@ func main() {
 		fmt.Println("Decrypted Media URL: ", highBitrateURL)
 
 		// Download the song
-		err = downloadSong(highBitrateURL, song.Song)
+		err = downloadSong(highBitrateURL, song.Song, song)
 		if err != nil {
 			log.Fatalf("Error downloading song: %s\n", err)
 		}
