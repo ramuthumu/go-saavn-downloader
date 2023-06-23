@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/des"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -75,6 +77,36 @@ type AlbumResponse struct {
 }
 
 var httpClient = &http.Client{} // Create a new HTTP client
+
+func DecryptURL(encryptedMediaURL string) (string, error) {
+	key := []byte("38346591")
+
+	ciphertext, _ := base64.StdEncoding.DecodeString(encryptedMediaURL)
+
+	block, err := des.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	if len(ciphertext)%des.BlockSize != 0 {
+		return "", fmt.Errorf("ciphertext is not a multiple of the block size")
+	}
+
+	decrypted := make([]byte, len(ciphertext))
+	for bs := 0; bs < len(ciphertext); bs += des.BlockSize {
+		block.Decrypt(decrypted[bs:], ciphertext[bs:])
+	}
+
+	decrypted = PKCS5UnPadding(decrypted)
+
+	return string(decrypted), nil
+}
+
+func PKCS5UnPadding(src []byte) []byte {
+	length := len(src)
+	unpadding := int(src[length-1])
+	return src[:(length - unpadding)]
+}
 
 func getAlbumID(inputUrl string) (string, error) {
 	token := strings.Split(inputUrl, "/")[len(strings.Split(inputUrl, "/"))-1]
@@ -152,5 +184,14 @@ func main() {
 		log.Fatalf("Error getting album details: %s\n", err)
 	}
 
-	fmt.Printf("Album details : %s\n", albumJSON)
+	for _, song := range albumJSON.Songs {
+		fmt.Println("Encrypted Media URL: ", song.EncryptedMediaURL)
+		decryptedURL, err := DecryptURL(song.EncryptedMediaURL)
+		if err != nil {
+			log.Fatalf("Error decrypting URL: %s\n", err)
+		}
+
+		fmt.Println("Decrypted Media URL: ", decryptedURL)
+	}
+
 }
