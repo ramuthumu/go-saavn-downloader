@@ -5,9 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -165,6 +167,26 @@ func getAlbum(albumID string) (AlbumResponse, error) {
 	return data, nil
 }
 
+func downloadSong(songURL string, songName string) error {
+	// Send an HTTP GET request
+	resp, err := http.Get(songURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Create a file to write to
+	outFile, err := os.Create(songName + ".mp3")
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	// Write the response body to file
+	_, err = io.Copy(outFile, resp.Body)
+	return err
+}
+
 func main() {
 	fmt.Println("Please enter the album URL:")
 
@@ -191,7 +213,15 @@ func main() {
 			log.Fatalf("Error decrypting URL: %s\n", err)
 		}
 
-		fmt.Println("Decrypted Media URL: ", decryptedURL)
+		// Replace "_96" with "_320" in the decrypted URL
+		highBitrateURL := strings.Replace(decryptedURL, "_96", "_320", 1)
+		fmt.Println("Decrypted Media URL: ", highBitrateURL)
+
+		// Download the song
+		err = downloadSong(highBitrateURL, song.Song)
+		if err != nil {
+			log.Fatalf("Error downloading song: %s\n", err)
+		}
 	}
 
 }
