@@ -5,3 +5,7 @@
 .idea/vcs.xml
 .idea/.gitignore
 .idea/*
+.DS_Store
+*.mp3
+*.mp4
+*.m4a
