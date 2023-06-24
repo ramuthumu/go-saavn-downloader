@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Response struct {
@@ -210,6 +211,8 @@ func downloadSong(songURL string, songName string, albumName string, wg *sync.Wa
 func main() {
 	fmt.Println("Please enter the album URL:")
 
+	startTime := time.Now()
+
 	var url string
 	_, err := fmt.Scanf("%s", &url)
 	if err != nil {
@@ -246,6 +249,10 @@ func main() {
 	}
 
 	wg.Wait() // wait for all downloads to finish
+
+	endTime := time.Now()
+	executionTime := endTime.Sub(startTime)
+	fmt.Println("Execution time:", executionTime)
 
 	close(errChan) // close error channel
 
