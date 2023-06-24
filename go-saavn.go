@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type Response struct {
@@ -169,11 +170,14 @@ func getAlbum(albumID string) (AlbumResponse, error) {
 	return data, nil
 }
 
-func downloadSong(songURL string, songName string, albumName string) error {
+func downloadSong(songURL string, songName string, albumName string, wg *sync.WaitGroup, errChan chan<- error) {
+	defer wg.Done()
+
 	// Create the album folder if it doesn't exist
 	err := os.MkdirAll(albumName, os.ModePerm)
 	if err != nil {
-		return err
+		errChan <- err
+		return
 	}
 
 	// Construct the file path for the downloaded song
@@ -182,20 +186,25 @@ func downloadSong(songURL string, songName string, albumName string) error {
 	// Send an HTTP GET request
 	resp, err := http.Get(songURL)
 	if err != nil {
-		return err
+		errChan <- err
+		return
 	}
 	defer resp.Body.Close()
 
 	// Create a file to write to
 	outFile, err := os.Create(filePath)
 	if err != nil {
-		return err
+		errChan <- err
+		return
 	}
 	defer outFile.Close()
 
 	// Write the response body to file
 	_, err = io.Copy(outFile, resp.Body)
-	return err
+	if err != nil {
+		errChan <- err
+		return
+	}
 }
 
 func main() {
@@ -217,11 +226,8 @@ func main() {
 		log.Fatalf("Error getting album details: %s\n", err)
 	}
 
-	// Create the album folder
-	err = os.MkdirAll(albumJSON.Name, os.ModePerm)
-	if err != nil {
-		log.Fatalf("Error creating album folder: %s\n", err)
-	}
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(albumJSON.Songs)) // buffer error channel
 
 	for _, song := range albumJSON.Songs {
 		fmt.Println("Encrypted Media URL: ", song.EncryptedMediaURL)
@@ -235,10 +241,18 @@ func main() {
 		fmt.Println("Decrypted Media URL: ", highBitrateURL)
 
 		// Download the song and save it in the album folder
-		err = downloadSong(highBitrateURL, song.Song, albumJSON.Name)
+		wg.Add(1)
+		go downloadSong(highBitrateURL, song.Song, albumJSON.Name, &wg, errChan) // start download in a goroutine
+	}
+
+	wg.Wait() // wait for all downloads to finish
+
+	close(errChan) // close error channel
+
+	// Check for errors
+	for err := range errChan {
 		if err != nil {
 			log.Fatalf("Error downloading song: %s\n", err)
 		}
 	}
-
 }
