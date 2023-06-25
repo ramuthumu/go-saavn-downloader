@@ -13,7 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cheggaaa/pb/v3"
+	"github.com/vbauerster/mpb"
+	"github.com/vbauerster/mpb/decor"
 )
 
 type Response struct {
@@ -172,7 +173,7 @@ func getAlbum(albumID string) (AlbumResponse, error) {
 	return data, nil
 }
 
-func downloadSong(songURL string, songName string, artistName string, albumName string, wg *sync.WaitGroup, errChan chan<- error) {
+func downloadSong(songURL string, songName string, artistName string, albumName string, p *mpb.Progress, wg *sync.WaitGroup, errChan chan<- error) {
 	defer wg.Done()
 
 	// Create the artist and album folders if they don't exist
@@ -184,7 +185,7 @@ func downloadSong(songURL string, songName string, artistName string, albumName 
 	}
 
 	// Construct the file path for the downloaded song
-	filePath := filepath.Join(albumPath, songName+".mp3")
+	filePath := filepath.Join(albumPath, songName+".m4a")
 
 	// Send an HTTP GET request
 	resp, err := http.Get(songURL)
@@ -203,8 +204,14 @@ func downloadSong(songURL string, songName string, artistName string, albumName 
 	defer outFile.Close()
 
 	// Create a progress bar
-	bar := pb.Full.Start64(resp.ContentLength)
-	barReader := bar.NewProxyReader(resp.Body)
+	bar := p.AddBar(resp.ContentLength, mpb.PrependDecorators(
+		decor.Name(songName),
+		decor.CountersKibiByte(" % .2f / % .2f"),
+	),
+		mpb.AppendDecorators(decor.EwmaETA(decor.ET_STYLE_MMSS, 60)))
+
+	// Create a proxy reader
+	barReader := bar.ProxyReader(resp.Body)
 
 	// Write the response body to file
 	_, err = io.Copy(outFile, barReader)
@@ -213,7 +220,7 @@ func downloadSong(songURL string, songName string, artistName string, albumName 
 		return
 	}
 
-	bar.Finish()
+	bar.Abort(false)
 }
 
 func main() {
@@ -238,6 +245,8 @@ func main() {
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(albumJSON.Songs)) // buffer error channel
 
+	p := mpb.New(mpb.WithWaitGroup(&wg))
+
 	for _, song := range albumJSON.Songs {
 
 		decryptedURL, err := DecryptURL(song.EncryptedMediaURL)
@@ -250,7 +259,7 @@ func main() {
 
 		// Download the song and save it in the album folder
 		wg.Add(1)
-		go downloadSong(highBitrateURL, song.Song, albumJSON.PrimaryArtists, albumJSON.Name, &wg, errChan) // start download in a goroutine
+		go downloadSong(highBitrateURL, song.Song, albumJSON.PrimaryArtists, albumJSON.Name, p, &wg, errChan) // start download in a goroutine
 	}
 
 	wg.Wait() // wait for all downloads to finish
