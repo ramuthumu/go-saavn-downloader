@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/cheggaaa/pb/v3"
 )
 
 type Response struct {
@@ -200,12 +202,18 @@ func downloadSong(songURL string, songName string, artistName string, albumName 
 	}
 	defer outFile.Close()
 
+	// Create a progress bar
+	bar := pb.Full.Start64(resp.ContentLength)
+	barReader := bar.NewProxyReader(resp.Body)
+
 	// Write the response body to file
-	_, err = io.Copy(outFile, resp.Body)
+	_, err = io.Copy(outFile, barReader)
 	if err != nil {
 		errChan <- err
 		return
 	}
+
+	bar.Finish()
 }
 
 func main() {
@@ -231,7 +239,7 @@ func main() {
 	errChan := make(chan error, len(albumJSON.Songs)) // buffer error channel
 
 	for _, song := range albumJSON.Songs {
-		fmt.Println("Encrypted Media URL: ", song.EncryptedMediaURL)
+
 		decryptedURL, err := DecryptURL(song.EncryptedMediaURL)
 		if err != nil {
 			log.Fatalf("Error decrypting URL: %s\n", err)
@@ -239,7 +247,6 @@ func main() {
 
 		// Replace "_96" with "_320" in the decrypted URL
 		highBitrateURL := strings.Replace(decryptedURL, "_96", "_320", 1)
-		fmt.Println("Decrypted Media URL: ", highBitrateURL)
 
 		// Download the song and save it in the album folder
 		wg.Add(1)
