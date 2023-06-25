@@ -170,18 +170,19 @@ func getAlbum(albumID string) (AlbumResponse, error) {
 	return data, nil
 }
 
-func downloadSong(songURL string, songName string, albumName string, wg *sync.WaitGroup, errChan chan<- error) {
+func downloadSong(songURL string, songName string, artistName string, albumName string, wg *sync.WaitGroup, errChan chan<- error) {
 	defer wg.Done()
 
-	// Create the album folder if it doesn't exist
-	err := os.MkdirAll(albumName, os.ModePerm)
+	// Create the artist and album folders if they don't exist
+	albumPath := filepath.Join(artistName, albumName)
+	err := os.MkdirAll(albumPath, os.ModePerm)
 	if err != nil {
 		errChan <- err
 		return
 	}
 
 	// Construct the file path for the downloaded song
-	filePath := filepath.Join(albumName, songName+".mp3")
+	filePath := filepath.Join(albumPath, songName+".mp3")
 
 	// Send an HTTP GET request
 	resp, err := http.Get(songURL)
@@ -242,7 +243,7 @@ func main() {
 
 		// Download the song and save it in the album folder
 		wg.Add(1)
-		go downloadSong(highBitrateURL, song.Song, albumJSON.Name, &wg, errChan) // start download in a goroutine
+		go downloadSong(highBitrateURL, song.Song, albumJSON.PrimaryArtists, albumJSON.Name, &wg, errChan) // start download in a goroutine
 	}
 
 	wg.Wait() // wait for all downloads to finish
