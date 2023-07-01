@@ -7,59 +7,68 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
 const (
-	BaseURL       = "https://www.eenadu.net"
+	BaseURL        = "https://www.eenadu.net"
 	outputFileName = "eenadu.json"
 )
 
 type Article struct {
-	URL            string `json:"url"`
-	Title          string `json:"title"`
-	DatePublished  string `json:"date_published"`
-	Content        string `json:"content"`
+	URL           string `json:"url"`
+	Title         string `json:"title"`
+	DatePublished string `json:"date_published"`
+	Content       string `json:"content"`
 }
+
+type Job struct {
+	URL   string
+	Depth int
+}
+
+var (
+	visited = make(map[string]bool)
+	queue   chan Job
+	wg      sync.WaitGroup
+	lock    sync.Mutex
+)
 
 func main() {
-	visited := make(map[string]bool)
-	queue := []string{BaseURL}
+	queue = make(chan Job)
+	wg.Add(1)
 
-	for len(queue) > 0 {
-		currentURL := queue[0]
-		queue = queue[1:]
-
-		if visited[currentURL] {
-			continue
+	go func() {
+		defer wg.Done()
+		for job := range queue {
+			processURL(job)
 		}
-		visited[currentURL] = true
+	}()
 
-		article, urls, err := extractContent(currentURL)
-		if err != nil {
-			log.Printf("Failed to extract content from %s: %v", currentURL, err)
-			continue
-		}
-
-		writeArticleToFile(article, outputFileName)
-
-		for _, url := range urls {
-			if !visited[url] {
-				queue = append(queue, url)
-			}
-		}
-	}
+	queue <- Job{URL: BaseURL, Depth: 0}
+	wg.Wait()
+	close(queue)
 }
 
-func extractContent(url string) (*Article, []string, error) {
+func processURL(job Job) {
+	url := job.URL
+	depth := job.Depth
+
+	if depth > 2 {
+		return
+	}
+
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, nil, err
+		log.Printf("Failed to get URL %s: %v", url, err)
+		return
 	}
 	defer resp.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return nil, nil, err
+		log.Printf("Failed to parse document for URL %s: %v", url, err)
+		return
 	}
 
 	title := doc.Find("h1").Text()
@@ -77,12 +86,27 @@ func extractContent(url string) (*Article, []string, error) {
 		}
 	})
 
-	return &Article{
+	article := &Article{
 		URL:           url,
 		Title:         title,
 		DatePublished: datePublished,
 		Content:       content,
-	}, urls, nil
+	}
+
+	writeArticleToFile(article, outputFileName)
+
+	lock.Lock()
+	for _, link := range urls {
+		if !visited[link] {
+			visited[link] = true
+			wg.Add(1)
+			go func(link string) {
+				defer wg.Done()
+				queue <- Job{URL: link, Depth: depth + 1}
+			}(link)
+		}
+	}
+	lock.Unlock()
 }
 
 func writeArticleToFile(article *Article, filename string) {
