@@ -10,15 +10,15 @@ import (
 )
 
 const (
-	BaseURL        = "https://www.eenadu.net"
+	BaseURL       = "https://www.eenadu.net"
 	outputFileName = "eenadu.json"
 )
 
 type Article struct {
-	URL           string `json:"url"`
-	Title         string `json:"title"`
-	DatePublished string `json:"date_published"`
-	Content       string `json:"content"`
+	URL            string `json:"url"`
+	Title          string `json:"title"`
+	DatePublished  string `json:"date_published"`
+	Content        string `json:"content"`
 }
 
 func main() {
